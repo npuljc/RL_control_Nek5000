@@ -30,8 +30,8 @@ Reynolds number: `150`
 
 The following is the comparison of two flows (the top is baseline and the bottom is controlled flow).
 <p align="center">
-  <img src="./baseline.gif">
-  <img src="./control.gif">
+  <img src="./figures/baseline.gif">
+  <img src="./figures/control.gif">
 </p>
 
 
