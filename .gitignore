@@ -1,0 +1,20 @@
+# python runtime files
+*/__pycache__/*
+
+# training files
+*/saved_models/*
+
+# CFD simulations files
+*/*/obj/*
+*/cylinder/.state
+*/cylinder/Qhist.dat
+*/cylinder/Q.txt
+*/cylinder/SESSION.NAME
+*/cylinder/Q.txt
+*/cylinder/compiler.out
+*/cylinder/nek5000
+*/cylinder/newflow.plt
+*/cylinder/restart.fld
+*/cylinder/cylinder.f
+*/cylinder/makefile
+*/*.plt

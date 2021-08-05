@@ -1,0 +1,2 @@
+      real Qtime, Qold, Qnew, Q1
+      common /jetsvaule/ Qtime, Qold, Qnew, Q1

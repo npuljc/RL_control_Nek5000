@@ -1,0 +1,6 @@
+NEK_SOURCE_ROOT=/home/jichao/Nek5000
+FC=mpif77
+FFLAGS= -std=legacy -fdefault-real-8 -fdefault-double-8 -cpp
+CC=mpicc
+CFLAGS=
+PPLIST= MPI UNDERSCORE TIMER

@@ -1,0 +1,17 @@
+c
+c     Selective frequency damping (SFD) method
+c
+
+c     Solution data of steady state
+      real vx_s(lx1,ly1,lz1,lelv)
+     $    ,vy_s(lx1,ly1,lz1,lelv)
+     $    ,vz_s(lx1,ly1,lz1,lelv)
+     $    ,dampfx(lx1,ly1,lz1,lelv)
+     $    ,dampfy(lx1,ly1,lz1,lelv)
+     $    ,dampfz(lx1,ly1,lz1,lelv)
+
+      real coeff,fwidth
+
+      common /steadyst/ vx_s,vy_s,vz_s
+     $                 ,dampfx,dampfy,dampfz
+     $                 ,coeff,fwidth

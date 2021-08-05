@@ -1,0 +1,367 @@
+c-----------------------------------------------------------------------
+C
+C  Compute the base field of cylinder flow
+c
+c  Selectrive Frequency Damping (SFD) method 
+C
+c  Feng Zhe (e0348780@u.nus.edu)
+c-----------------------------------------------------------------------
+c start time for averaging
+#define tSTATSTART uparam(1)
+
+c output frequency for statistics
+#define tSTATFREQ  uparam(2)
+
+c data extraction using interpolation
+#define INTP_NMAX 9
+#define INTP_NX 3
+#define INTP_NY 3
+#define XCINT 0.5
+#define YCINT 0.5
+#define ZCINT 0.0
+
+c mesh dimensions
+#define PI (4.*atan(1.))
+c-----------------------------------------------------------------------
+      subroutine uservp (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      udiff  = 0.
+      utrans = 0.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      include 'SFD'
+
+      ie = gllel(ieg)
+
+      ffx = dampfx(ix,iy,iz,ie)
+      ffy = dampfy(ix,iy,iz,ie)
+      ffz = dampfz(ix,iy,iz,ie)
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userq  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      qvol   = 0.0
+      source = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk
+      include 'SIZE'
+      include 'TOTAL'
+      include 'ZPER'  ! for nelx,nely,nelz
+      include 'SFD'
+
+      integer icalld
+      save    icalld
+      data    icalld /0/
+
+      real    rwk(INTP_NMAX,ldim+1) ! r,s,t,dist2
+      integer iwk(INTP_NMAX,3)      ! code,proc,e1
+      save    rwk,iwk
+
+      integer nint,intp_h
+      save    nint,intp_h
+
+      logical iffpts
+      save    iffpts
+
+      real xint(INTP_NMAX),yint(INTP_NMAX),zint(INTP_NMAX)
+      save xint,yint,zint
+
+      real preye(INTP_NMAX)
+      save preye
+
+      integer ntdump
+      save ntdump
+
+      parameter (lt=lx1*ly1*lz1*lelv)
+      common /scrns/ vort(lt,3), wo1(lt), wo2(lt)
+
+      real tmp1(lx1,ly1,lz1,lelv)
+     $   , tmp2(lx1,ly1,lz1,lelv)
+     $   , tmp3(lx1,ly1,lz1,lelv)
+      real invfw,tmstep
+      real normsq1,normsq2,normsq3,totnorm
+
+      real x0(3)
+      save x0
+      data x0 /3*0/
+
+      real cdrag,clift
+
+      n = nx1*ny1*nz1*nelv
+
+      if (icalld.eq.0) then
+         nxm = 1  ! mesh is linear
+         call interp_setup(intp_h,0.0,nxm,nelt)
+         nint = 0
+         if (nid.eq.0) then
+            nint = INTP_NMAX
+            do i = 1,INTP_NX
+            do j = 1,INTP_NY
+               xint((i-1)*INTP_NY+j) = (i-1.)/(INTP_NX-1)*
+     $                                 (10.-1.)+1.0
+               yint((i-1)*INTP_NY+j) = (j-1.)/(INTP_NY-1)*
+     $                                 (4.+4.)-4.0
+            enddo
+            enddo
+            call cfill(zint,ZCINT,size(zint))
+         endif
+         iffpts = .true.   ! dummy call to find points
+         call interp_nfld(preye,pr,1,xint,yint,zint,nint,
+     $                    iwk,rwk,INTP_NMAX,iffpts,intp_h)
+         iffpts = .false.
+         ntdump = 0
+         icalld = 1
+      endif
+
+      if (istep.eq.0) then
+         call set_obj
+         cdrag = 0.0
+         clift = 0.0
+c        read control coefficient and filter width
+         if (nid.eq.0) then
+            open(99,file='parameters.txt')
+            read(99,*) coeff,fwidth
+            close(99)
+         endif
+         call bcast(coeff,sizeof(coeff))
+         call bcast(fwidth,sizeof(fwidth))
+c        initialize the steady-state solution
+         call rzero(vx_s,n)
+         call rzero(vy_s,n)
+         call rzero(vz_s,n)
+      endif
+
+c     update the steady-state solution
+      call sub3(tmp1,vx,vx_s,n)
+      call sub3(tmp2,vy,vy_s,n)
+      call sub3(tmp3,vz,vz_s,n)
+
+c     check the convergence
+c     norm of residual error
+      normsq1 = glsc3(tmp1,bm1,tmp1,n)
+      normsq2 = glsc3(tmp2,bm1,tmp2,n)
+      normsq3 = glsc3(tmp3,bm1,tmp3,n)
+      totnorm = normsq1+normsq2+normsq3
+      if (totnorm.gt.0) then
+         totnorm = sqrt(totnorm/volvm1)
+      endif
+
+      call copy(dampfx,tmp1,n)
+      call copy(dampfy,tmp2,n)
+      call copy(dampfz,tmp3,n)
+      contr = coeff 
+      call cmult(dampfx,coeff,n)
+      call cmult(dampfy,coeff,n)
+      call cmult(dampfz,coeff,n)
+      call chsign(dampfx,n)
+      call chsign(dampfy,n)
+      call chsign(dampfz,n)
+
+      invfw = 1./fwidth
+      call cmult(tmp1,invfw,n) 
+      call cmult(tmp2,invfw,n) 
+      call cmult(tmp3,invfw,n)
+
+      tmstep = param(12)
+      call cmult(tmp1,tmstep,n) 
+      call cmult(tmp2,tmstep,n) 
+      call cmult(tmp3,tmstep,n)
+
+      call add2(vx_s,tmp1,n)
+      call add2(vy_s,tmp2,n)
+      call add2(vz_s,tmp3,n)
+      
+
+c     compute drag and lift coefficients
+      scale = 2.  ! Cd = F/(.5 rho U^2 ) = 2*F
+      if (mod(istep,10).eq.0) then
+         call torque_calc(scale,x0,.false.,.false.)
+         cdrag = dragx(1)
+         clift = dragy(1)
+
+         if (nid.eq.0) then
+            open(unit=58,file='cdcl.dat',position='append')
+            write(58,3) time, cdrag, clift
+            open(unit=59,file='residual.dat',position='append')
+            write(59,3) time, totnorm, coeff, fwidth
+  3         format(' ',6e17.9)
+            close(58)
+            close(59)
+         endif
+      endif
+
+c     compute vorticity field
+      if (ifoutfld) then
+         call comp_vort3(vort,wo1,wo2,vx,vy,vz)
+         call copy(t,vort,n)
+         ifto = .true.
+      endif
+
+c     write out probing points
+      if (time.ge.tSTATSTART) then
+      if (time.gt.(ntdump+1)*tSTATFREQ) then
+         call interp_nfld(preye,pr,1,xint,yint,zint,nint,
+     $                    iwk,rwk,INTP_NMAX,iffpts,intp_h)
+
+         if (nid.eq.0) then
+            open(unit=60,file='prdetec.dat')
+            do i=1,INTP_NMAX
+               write(60,3) xint(i),yint(i),preye(i)
+            enddo
+            close(60)
+         endif
+         ntdump = ntdump + 1
+
+      endif
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc (ix,iy,iz,iside,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      real height, conpi,Amplt,jetwidth,smthdt,tempx,coefA
+      height = 5.0
+      conpi  = PI
+      jetwidth = 10.0/180.0*conpi
+
+      if (x< -1.) then
+        ux = (1-y)*(1+y)
+      else 
+        ux = 0.0
+      endif
+
+      uy = 0.0
+      uz = 0.0
+      temp = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine useric (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      ux = (1-y)*(1+y)
+      uy = 0.0
+      uz = 0.0
+
+      temp = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat   ! This routine to modify element vertices
+      include 'SIZE'      ! _before_ mesh is generated, which 
+      include 'TOTAL'     ! guarantees GLL mapping of mesh.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2   ! This routine to modify mesh coordinates
+      include 'SIZE'
+      include 'TOTAL'
+      include 'ZPER'  ! for nelx,nely,nelz
+
+      do iel=1,nelv
+      do ifc=1,2*ndim
+         id_face = bc(5,ifc,iel,1)
+         if (id_face.eq.1) then
+            cbc(ifc,iel,1) = 'v  '
+         elseif (id_face.eq.2) then
+            cbc(ifc,iel,1) = 'O  '
+         elseif (id_face.eq.3) then
+            cbc(ifc,iel,1) = 'W  '
+         elseif (id_face.eq.4) then
+            cbc(ifc,iel,1) = 'v  '
+         endif
+      enddo
+      enddo
+
+      param(66) = 0
+      param(67) = 0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3
+      include 'SIZE'
+      include 'TOTAL'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine set_obj  ! define objects for surface integrals
+c
+      include 'SIZE'
+      include 'TOTAL'
+
+      integer e,f,eg
+
+      nobj = 1
+      iobj = 0
+      do ii=nhis+1,nhis+nobj
+         iobj = iobj+1
+         hcode(10,ii) = 'I'
+         hcode( 1,ii) = 'F'
+         hcode( 2,ii) = 'F'
+         hcode( 3,ii) = 'F'
+         lochis(1,ii) = iobj
+      enddo
+      nhis = nhis + nobj
+
+      if (maxobj.lt.nobj) call exitti('increase maxobj in SIZE$',nobj)
+
+      nxyz  = nx1*ny1*nz1
+      nface = 2*ndim
+
+      do e=1,nelv
+      do f=1,nface
+         if (cbc(f,e,1).eq.'W  ') then
+            iobj  = 1
+            if (iobj.gt.0) then
+               nmember(iobj) = nmember(iobj) + 1
+               mem = nmember(iobj)
+               eg  = lglel(e)
+               object(iobj,mem,1) = eg
+               object(iobj,mem,2) = f
+c              write(6,1) iobj,mem,f,eg,e,nid,' OBJ'
+c   1          format(6i9,a4)
+
+            endif
+         endif
+      enddo
+      enddo
+
+c     write(6,*) 'number',(nmember(k),k=1,4)
+c
+      return
+      end
+c-----------------------------------------------------------------------
+c
+c automatically added by makenek
+      subroutine usrsetvert(glo_num,nel,nx,ny,nz) ! to modify glo_num
+      integer*8 glo_num(1)
+      return
+      end

@@ -19,8 +19,8 @@ The main differences are the simulation environment and reward functions:
 ## How to run
 
 - Complie the CFD code in folder _flowcontrol/cylinder_: `makenek cylinder`
-- Train the control policy in folder _flowcontrol_: `python3 perform_learning.py`
-- Test the control performance in folder _flowcontrol_: `python3 single_runner.py`
+- Train the control policy in folder _flowcontrol_: `python3 training.py.py`
+- Test the control performance in folder _flowcontrol_: `python3 testing.py`
 - If you want to compute the SFD base flow by yourself, go to folder _SFDbase_ and run: 1. `makenek cylinder` 2. `nekmpi cylinder 5`
 
 ## Vortex shedding suppression performance
